@@ -1,0 +1,248 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+
+// 应用配置
+const APP_NAME = "HA Stats Detector";
+const VERSION = "1.0.0";
+
+// 日志函数
+function log(message, isDebug = false) {
+    if (isDebug && !global.DEBUG) {
+        return;
+    }
+    const LOG_PREFIX = `[${APP_NAME}]`;
+    const logPriority = isDebug ? 'debug' : 'info';
+
+    // 使用 logger 命令写入系统日志
+    exec(`logger -t "${LOG_PREFIX}" -p daemon.${logPriority} "${message}"`, (error) => {
+        if (error) {
+            // 如果写入系统日志失败，回退到控制台输出
+            console[logPriority](`${LOG_PREFIX} ${message}`);
+        }
+    });
+}
+
+// 获取设备名称
+function getDeviceName() {
+    try {
+        const hostname = fs.readFileSync('/proc/sys/kernel/hostname', 'utf8').trim();
+        return hostname.toLowerCase().replace(/-/g, '_');
+    } catch (error) {
+        return 'unknown_device';
+    }
+}
+
+// 获取系统状态
+async function getSystemStats() {
+    const stats = {};
+
+    // 获取温度
+    try {
+        const temp = await fs.promises.readFile('/sys/class/thermal/thermal_zone0/temp', 'utf8');
+        stats.temperature = parseFloat((parseInt(temp) / 1000).toFixed(3));
+    } catch (error) {
+        // 温度读取失败时跳过
+    }
+
+    // 获取负载
+    try {
+        const loadAvg = await fs.promises.readFile('/proc/loadavg', 'utf8');
+        const [load1min, load5min, load15min] = loadAvg.split(' ');
+        stats.load_1min = parseFloat(load1min);
+        stats.load_5min = parseFloat(load5min);
+        stats.load_15min = parseFloat(load15min);
+    } catch (error) {
+        // 负载读取失败时跳过
+    }
+
+    // 获取CPU使用率
+    try {
+        const cpuUsage = await new Promise((resolve, reject) => {
+            exec('top -bn1 | grep "CPU:"', (error, stdout) => {
+                if (error) reject(error);
+                const usage = stdout.split('CPU:')[1].split('%')[0].trim();
+                resolve(parseFloat(usage));
+            });
+        });
+        stats.cpu_usage = cpuUsage;
+    } catch (error) {
+        // CPU使用率读取失败时跳过
+    }
+
+    return stats;
+}
+
+// 获取状态指标的单位
+function getUnitForStat(statName) {
+    const units = {
+        temperature: '°C',
+        cpu_usage: '%'
+    };
+    return units[statName] || '';
+}
+
+// 获取状态指标的图标
+function getIconForStat(statName) {
+    const icons = {
+        temperature: 'mdi:thermometer',
+        load_1min: 'mdi:chart-line',
+        load_5min: 'mdi:chart-line',
+        load_15min: 'mdi:chart-line',
+        cpu_usage: 'mdi:cpu-64-bit'
+    };
+    return icons[statName] || 'mdi:eye';
+}
+
+// 发送数据到Home Assistant
+async function sendToHA(entityId, data, config) {
+    const url = new URL(`${config.hass_url}/api/states/${entityId}`);
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${config.hass_token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+        }
+
+        return true;
+    } catch (error) {
+        throw error;
+    }
+}
+
+// 更新版本实体
+async function updateVersionEntity(deviceName, config) {
+    const entityId = `sensor.${deviceName}_stats_detector_version`;
+    const data = {
+        state: VERSION,
+        attributes: {
+            friendly_name: `Openwrt(${deviceName}) Stats Detector Version`,
+            icon: 'mdi:information'
+        }
+    };
+
+    try {
+        await sendToHA(entityId, data, config);
+        log('Version entity updated successfully', true);
+        return true;
+    } catch (error) {
+        log('Failed to update version entity');
+        return false;
+    }
+}
+
+// 发送系统状态到Home Assistant
+async function sendSystemStats(deviceName, stats, config) {
+    let hasError = false;
+
+    for (const [statName, value] of Object.entries(stats)) {
+        const entityId = `sensor.${deviceName}_${statName}`;
+        const friendlyName = `${deviceName} ${statName.replace(/_/g, ' ')}`;
+        const capitalizedName = friendlyName.charAt(0).toUpperCase() + friendlyName.slice(1);
+
+        const data = {
+            state: value,
+            attributes: {
+                unit_of_measurement: getUnitForStat(statName),
+                friendly_name: capitalizedName,
+                icon: getIconForStat(statName)
+            }
+        };
+
+        try {
+            await sendToHA(entityId, data, config);
+        } catch (error) {
+            hasError = true;
+            log(`Failed to send data for ${entityId}`);
+        }
+    }
+
+    return !hasError;
+}
+
+// 主函数
+async function main() {
+    // 读取配置文件
+    const CONFIG_FILE = path.join(__dirname, 'settings.json');
+
+    let config;
+    try {
+        const configContent = await fs.promises.readFile(CONFIG_FILE, 'utf8');
+        config = JSON.parse(configContent);
+        config = {
+            hass_url: config.hass_url || 'http://homeassistant.local:8123',
+            hass_token: config.hass_token || '',
+            update_interval: config.update_interval || 60,
+            debug: config.debug || false
+        };
+    } catch (error) {
+        log(`Configuration file not found: ${CONFIG_FILE}`);
+        process.exit(1);
+    }
+
+    if (!config.hass_token) {
+        log('Home Assistant token not configured');
+        process.exit(1);
+    }
+
+    global.DEBUG = config.debug;
+    const deviceName = getDeviceName();
+    log(`Starting OpenWRT System Monitor v${VERSION}`);
+
+    // 更新版本实体
+    await updateVersionEntity(deviceName, config);
+
+    let lastUpdate = 0;
+    let haIsOffline = false;
+
+    // 处理进程终止信号
+    process.on('SIGTERM', () => {
+        log('Stopping...');
+        process.exit(0);
+    });
+    process.on('SIGINT', () => {
+        log('Stopping...');
+        process.exit(0);
+    });
+
+    // 主循环
+    while (true) {
+        const currentTime = Math.floor(Date.now() / 1000);
+
+        if (currentTime - lastUpdate >= config.update_interval) {
+            const stats = await getSystemStats();
+
+            if (await sendSystemStats(deviceName, stats, config)) {
+                if (haIsOffline) {
+                    log('Home Assistant is back online');
+                    await updateVersionEntity(deviceName, config);
+                    haIsOffline = false;
+                }
+            } else {
+                log('Home Assistant seems to be offline, will retry...');
+                haIsOffline = true;
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                continue;
+            }
+
+            lastUpdate = currentTime;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+}
+
+main().catch(error => {
+    log(`Error: ${error.message}`);
+    process.exit(1);
+});

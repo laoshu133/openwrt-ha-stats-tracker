@@ -1,0 +1,6 @@
+{
+  "hass_url": "http://homeassistant.local:8123",
+  "hass_token": "<Home Assistant REST API Bearer Token>",
+  "update_interval": 60,
+  "debug": false
+}
