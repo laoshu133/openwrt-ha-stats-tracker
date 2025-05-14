@@ -1,0 +1,29 @@
+{
+  "name": "openwrt-ha-stats-tracker",
+  "version": "1.0.0",
+  "description": "A system monitoring tool that collects OpenWrt system statistics and reports them to Home Assistant",
+  "main": "ha-stats-detector",
+  "bin": {
+    "ha-stats-detector": "./ha-stats-detector"
+  },
+  "scripts": {
+    "start": "node ha-stats-detector",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "openwrt",
+    "home-assistant",
+    "monitoring",
+    "system-stats",
+    "iot",
+    "temperature",
+    "cpu-usage",
+    "system-load"
+  ],
+  "author": "XiaoMi",
+  "license": "MIT",
+  "homepage": "https://github.com/laoshu133/openwrt-ha-stats-tracker#readme"
+}
