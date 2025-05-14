@@ -84,9 +84,9 @@ logread | grep "HA Stats Tracker"
     - Describe the problem you're experiencing
     - Paste the log output in a code block
 
+## Changelog
+- 1.0.0: Initial release with core features including CPU temperature, system load, and CPU usage monitoring
+
 ## License
 
 MIT License
-
-## Changelog
-- 1.0.0: Initial release with core features including CPU temperature, system load, and CPU usage monitoring
