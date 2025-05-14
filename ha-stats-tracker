@@ -4,11 +4,11 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 
-// 应用配置
+// Application configuration
 const APP_NAME = "HA Stats Tracker";
-const VERSION = "1.0.1";
+const VERSION = "1.0.2";
 
-// 日志函数
+// Log function
 function log(message, isDebug = false) {
     if (isDebug && !global.DEBUG) {
         return;
@@ -16,38 +16,44 @@ function log(message, isDebug = false) {
     const LOG_PREFIX = `[${APP_NAME}]`;
     const logPriority = isDebug ? 'debug' : 'info';
 
-    // 使用 logger 命令写入系统日志
+    // Use logger command to write to system log
     exec(`logger -t "${LOG_PREFIX}" -p daemon.${logPriority} "${message}"`, (error) => {
         if (error) {
-            // 如果写入系统日志失败，回退到控制台输出
+            // If writing to system log fails, fallback to console output
             console[logPriority](`${LOG_PREFIX} ${message}`);
         }
     });
 }
 
-// 获取设备名称
-function getDeviceName() {
+// Get device information
+function getDeviceInfo() {
+    let name = 'openwrt_unknown_device';
     try {
-        const hostname = fs.readFileSync('/proc/sys/kernel/hostname', 'utf8').trim();
-        return hostname.toLowerCase().replace(/-/g, '_');
-    } catch (error) {
-        return 'unknown_device';
+        name = fs.readFileSync('/proc/sys/kernel/hostname', 'utf8').trim();
+    }
+    catch (error) {}
+
+    return {
+        name: name,
+        id: name.toLowerCase().replace(/-/g, '_'),
+        manufacturer: 'OpenWrt',
+        model: 'OpenWrt'
     }
 }
 
-// 获取系统状态
+// Get system status
 async function getSystemStats() {
     const stats = {};
 
-    // 获取温度
+    // Get temperature
     try {
         const temp = await fs.promises.readFile('/sys/class/thermal/thermal_zone0/temp', 'utf8');
         stats.temperature = parseFloat((parseInt(temp) / 1000).toFixed(3));
     } catch (error) {
-        // 温度读取失败时跳过
+        // Skip when temperature reading fails
     }
 
-    // 获取负载
+    // Get load
     try {
         const loadAvg = await fs.promises.readFile('/proc/loadavg', 'utf8');
         const [load1min, load5min, load15min] = loadAvg.split(' ');
@@ -55,10 +61,10 @@ async function getSystemStats() {
         stats.load_5min = parseFloat(load5min);
         stats.load_15min = parseFloat(load15min);
     } catch (error) {
-        // 负载读取失败时跳过
+        // Skip when load reading fails
     }
 
-    // 获取CPU使用率
+    // Get CPU usage
     try {
         const cpuUsage = await new Promise((resolve, reject) => {
             exec('top -bn1 | grep "CPU:"', (error, stdout) => {
@@ -69,13 +75,13 @@ async function getSystemStats() {
         });
         stats.cpu_usage = cpuUsage;
     } catch (error) {
-        // CPU使用率读取失败时跳过
+        // Skip when CPU usage reading fails
     }
 
     return stats;
 }
 
-// 获取状态指标的单位
+// Get unit for status metric
 function getUnitForStat(statName) {
     const units = {
         temperature: '°C',
@@ -84,7 +90,7 @@ function getUnitForStat(statName) {
     return units[statName] || '';
 }
 
-// 获取状态指标的图标
+// Get icon for status metric
 function getIconForStat(statName) {
     const icons = {
         temperature: 'mdi:thermometer',
@@ -96,7 +102,7 @@ function getIconForStat(statName) {
     return icons[statName] || 'mdi:eye';
 }
 
-// 发送数据到Home Assistant
+// Send data to Home Assistant
 async function sendToHA(entityId, data, config) {
     const url = new URL(`${config.hass_url}/api/states/${entityId}`);
 
@@ -120,13 +126,13 @@ async function sendToHA(entityId, data, config) {
     }
 }
 
-// 更新版本实体
-async function updateVersionEntity(deviceName, config) {
-    const entityId = `sensor.${deviceName}_stats_tracker_version`;
+// Update version entity
+async function updateVersionEntity(deviceInfo, config) {
+    const entityId = `sensor.${deviceInfo.id}_stats_tracker_version`;
     const data = {
         state: VERSION,
         attributes: {
-            friendly_name: `Openwrt(${deviceName}) Stats Tracker Version`,
+            friendly_name: `Openwrt(${deviceInfo.name}) Stats Tracker Version`,
             icon: 'mdi:information'
         }
     };
@@ -141,21 +147,35 @@ async function updateVersionEntity(deviceName, config) {
     }
 }
 
-// 发送系统状态到Home Assistant
-async function sendSystemStats(deviceName, stats, config) {
+// Send system status to Home Assistant
+async function sendSystemStats(deviceInfo, stats, config) {
     let hasError = false;
 
     for (const [statName, value] of Object.entries(stats)) {
-        const entityId = `sensor.${deviceName}_${statName}`;
-        const friendlyName = `${deviceName} ${statName.replace(/_/g, ' ')}`;
-        const capitalizedName = friendlyName.charAt(0).toUpperCase() + friendlyName.slice(1);
+        const entityId = `sensor.${deviceInfo.id}_${statName}`;
+
+        // Create more friendly display names
+        const statDisplayNames = {
+            temperature: 'Temperature',
+            load_1min: '1 Minute Load',
+            load_5min: '5 Minutes Load',
+            load_15min: '15 Minutes Load',
+            cpu_usage: 'CPU Usage'
+        };
+
+        const displayStatName = statDisplayNames[statName] || statName.replace(/_/g, ' ');
+        const friendlyName = `${deviceInfo.name} ${displayStatName}`;
+
+        // Create unique ID
+        const uniqueId = `${deviceInfo.id}_${statName}`;
 
         const data = {
             state: value,
             attributes: {
                 unit_of_measurement: getUnitForStat(statName),
-                friendly_name: capitalizedName,
-                icon: getIconForStat(statName)
+                friendly_name: friendlyName,
+                icon: getIconForStat(statName),
+                unique_id: uniqueId
             }
         };
 
@@ -170,9 +190,9 @@ async function sendSystemStats(deviceName, stats, config) {
     return !hasError;
 }
 
-// 主函数
+// Main function
 async function main() {
-    // 读取配置文件
+    // Read configuration file
     const CONFIG_FILE = path.join(__dirname, 'settings.json');
 
     let config;
@@ -196,16 +216,18 @@ async function main() {
     }
 
     global.DEBUG = config.debug;
-    const deviceName = getDeviceName();
-    log(`Starting OpenWRT System Monitor v${VERSION}`);
 
-    // 更新版本实体
-    await updateVersionEntity(deviceName, config);
+    log(`Starting OpenWRT Stats Tracker v${VERSION}`);
+
+    const deviceInfo = getDeviceInfo();
+
+    // Update version entity
+    await updateVersionEntity(deviceInfo, config);
 
     let lastUpdate = 0;
     let haIsOffline = false;
 
-    // 处理进程终止信号
+    // Handle process termination signals
     process.on('SIGTERM', () => {
         log('Stopping...');
         process.exit(0);
@@ -215,17 +237,17 @@ async function main() {
         process.exit(0);
     });
 
-    // 主循环
+    // Main loop
     while (true) {
         const currentTime = Math.floor(Date.now() / 1000);
 
         if (currentTime - lastUpdate >= config.update_interval) {
             const stats = await getSystemStats();
 
-            if (await sendSystemStats(deviceName, stats, config)) {
+            if (await sendSystemStats(deviceInfo.id, stats, config)) {
                 if (haIsOffline) {
                     log('Home Assistant is back online');
-                    await updateVersionEntity(deviceName, config);
+                    await updateVersionEntity(deviceInfo.id, config);
                     haIsOffline = false;
                 }
             } else {
