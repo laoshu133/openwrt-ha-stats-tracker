@@ -5,8 +5,8 @@ const path = require('path');
 const { exec } = require('child_process');
 
 // 应用配置
-const APP_NAME = "HA Stats Detector";
-const VERSION = "1.0.0";
+const APP_NAME = "HA Stats Tracker";
+const VERSION = "1.0.1";
 
 // 日志函数
 function log(message, isDebug = false) {
@@ -122,11 +122,11 @@ async function sendToHA(entityId, data, config) {
 
 // 更新版本实体
 async function updateVersionEntity(deviceName, config) {
-    const entityId = `sensor.${deviceName}_stats_detector_version`;
+    const entityId = `sensor.${deviceName}_stats_tracker_version`;
     const data = {
         state: VERSION,
         attributes: {
-            friendly_name: `Openwrt(${deviceName}) Stats Detector Version`,
+            friendly_name: `Openwrt(${deviceName}) Stats Tracker Version`,
             icon: 'mdi:information'
         }
     };

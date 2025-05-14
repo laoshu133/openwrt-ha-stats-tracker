@@ -4,7 +4,7 @@ START=90
 STOP=1
 USE_PROCD=1
 NAME=devices
-PROG=/etc/config/openwrt-ha-stats-tracker/ha-stats-detector
+PROG=/etc/config/openwrt-ha-stats-tracker/ha-stats-tracker
 
 start_service() {
     procd_open_instance

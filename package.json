@@ -2,12 +2,12 @@
   "name": "openwrt-ha-stats-tracker",
   "version": "1.0.0",
   "description": "A system monitoring tool that collects OpenWrt system statistics and reports them to Home Assistant",
-  "main": "ha-stats-detector",
+  "main": "ha-stats-tracker",
   "bin": {
-    "ha-stats-detector": "./ha-stats-detector"
+    "ha-stats-tracker": "./ha-stats-tracker"
   },
   "scripts": {
-    "start": "node ha-stats-detector",
+    "start": "node ha-stats-tracker",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "engines": {

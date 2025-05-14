@@ -32,7 +32,7 @@ cp settings.json.example settings.json
     - In Home Assistant, click on your user profile icon (usually in the bottom left corner).
     - Scroll down to the "Long-Lived Access Tokens" section.
     - Click "CREATE TOKEN".
-    - Give it a name (e.g., `OpenWrt Stats Detector`).
+    - Give it a name (e.g., `OpenWrt Stats Tracker`).
     - Copy the generated token. **Important: This token will only be shown once. Store it securely.**
 
 ```json
@@ -74,7 +74,7 @@ Each sensor includes:
 
 1. Check system logs:
 ```bash
-logread | grep "HA Stats Detector"
+logread | grep "HA Stats Tracker"
 ```
 
 2. Report issues:
