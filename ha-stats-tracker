@@ -6,7 +6,7 @@ const { exec } = require('child_process');
 
 // Application configuration
 const APP_NAME = "HA Stats Tracker";
-const VERSION = "1.0.2";
+const VERSION = "1.1.0";
 
 // Log function
 function log(message, isDebug = false) {
@@ -163,23 +163,23 @@ async function sendSystemStats(deviceInfo, stats, config) {
             cpu_usage: 'CPU Usage'
         };
 
-        const displayStatName = statDisplayNames[statName] || statName.replace(/_/g, ' ');
-        const friendlyName = `${deviceInfo.name} ${displayStatName}`;
-
-        // Create unique ID
         const uniqueId = `${deviceInfo.id}_${statName}`;
+        const displayStatName = statDisplayNames[statName] || statName.replace(/_/g, ' ');
 
         const data = {
             state: value,
             attributes: {
                 unit_of_measurement: getUnitForStat(statName),
-                friendly_name: friendlyName,
+                friendly_name: `${deviceInfo.name} ${displayStatName}`,
                 icon: getIconForStat(statName),
+
+                // TODO: Doesn't work, HA doesn't recognize it
                 unique_id: uniqueId
             }
         };
 
         try {
+            log(`Updating data for ${entityId}`, true);
             await sendToHA(entityId, data, config);
         } catch (error) {
             hasError = true;
@@ -190,8 +190,68 @@ async function sendSystemStats(deviceInfo, stats, config) {
     return !hasError;
 }
 
+// Remove an entity
+async function removeEntity(entityId, config) {
+    const url = new URL(`${config.hass_url}/api/states/${entityId}`);
+
+    try {
+        // First check if entity exists
+        const checkResponse = await fetch(url, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${config.hass_token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        // Skip if entity does not exist
+        if (!checkResponse.ok && checkResponse.status !== 404) {
+            log(`Failed to delete entity ${entityId}: ${checkResponse.statusText}`);
+
+            throw new Error(`HTTP Error: ${checkResponse.status}`);
+        }
+
+        log(`Successfully removed entity: ${entityId}`, true);
+        return true;
+    } catch (error) {
+        log(`Failed to remove entity ${entityId}: ${error.message}`);
+        return false;
+    }
+}
+
+// Remove all entities created by this tracker
+async function removeAllEntities(config) {
+    log('Starting to remove all entities...');
+
+    let success = true;
+
+    const deviceInfo = getDeviceInfo();
+    const stats = await getSystemStats();
+
+    // Remove each entity
+    for (const statName of Object.keys(stats)) {
+        const entityId = `sensor.${deviceInfo.id}_${statName}`;
+        const result = await removeEntity(entityId, config);
+        if (!result) {
+            success = false;
+        }
+    }
+
+    if (success) {
+        log('All entities have been successfully removed');
+    } else {
+        log('Some entities could not be removed, check the logs for details');
+    }
+
+    return success;
+}
+
 // Main function
 async function main() {
+    // Check for command line arguments
+    const args = process.argv.slice(2);
+    const command = String(args[0] || '').trim();
+
     // Read configuration file
     const CONFIG_FILE = path.join(__dirname, 'settings.json');
 
@@ -217,7 +277,25 @@ async function main() {
 
     global.DEBUG = config.debug;
 
-    log(`Starting OpenWRT Stats Tracker v${VERSION}`);
+    // Handle commands
+    if (command === 'remove_all_entities') {
+        log(`Starting Remove All Entities...`);
+        await removeAllEntities(config);
+        return process.exit(0);
+    }
+    else if (command ==='version') {
+        log(`HA Stats Tracker v${VERSION}`);
+        return process.exit(0);
+    }
+
+    // Check unknown commands
+    if (command !=='') {
+        log(`Unknown command: ${command}`);
+        return process.exit(1);
+    }
+
+    // Normal operation mode
+    log(`Starting HA Stats Tracker v${VERSION}`);
 
     const deviceInfo = getDeviceInfo();
 
@@ -244,7 +322,7 @@ async function main() {
         if (currentTime - lastUpdate >= config.update_interval) {
             const stats = await getSystemStats();
 
-            if (await sendSystemStats(deviceInfo.id, stats, config)) {
+            if (await sendSystemStats(deviceInfo, stats, config)) {
                 if (haIsOffline) {
                     log('Home Assistant is back online');
                     await updateVersionEntity(deviceInfo.id, config);
