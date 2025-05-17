@@ -4,10 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 
-// Application configuration
-const CONFIG_FILE = path.join(__dirname, 'settings.json');
+// Base configuration
+const VERSION = "1.2.0";
 const APP_NAME = "HA Stats Tracker";
-const VERSION = "1.1.0";
+const CONFIG_FILE = path.join(__dirname, 'settings.json');
 
 // Log function
 function log(message, isDebug = false) {
@@ -43,8 +43,6 @@ function getConfig(cfgPath = CONFIG_FILE) {
     try {
         const configContent = fs.readFileSync(cfgPath, 'utf8');
         const existingConfig = JSON.parse(configContent);
-
-        console.log(222, existingConfig);
 
         Object.assign(config, existingConfig);
     }
@@ -203,7 +201,7 @@ async function sendSystemStats(deviceInfo, stats, config) {
                 friendly_name: `${deviceInfo.name} ${displayStatName}`,
                 icon: getIconForStat(statName),
 
-                // TODO: Doesn't work, HA doesn't recognize it
+                // Not working, HA doesn't recognize it
                 unique_id: uniqueId
             }
         };
@@ -276,7 +274,7 @@ async function removeAllEntities(config) {
     return success;
 }
 
-// 添加一个 promisify 函数用于 readline 操作
+// Promisify readline.question
 function promptQuestion(rl, question, defaultValue = '') {
   return new Promise((resolve) => {
     rl.question(`${question}${defaultValue ? ` [${defaultValue}]` : ''}: `, (answer) => {
