@@ -290,7 +290,7 @@ async function main() {
         return process.exit(0);
     }
     else if (command === 'version') {
-        log(`HA Stats Tracker v${VERSION}`);
+        console.log(`HA Stats Tracker: v${VERSION}`);
         return process.exit(0);
     }
     else if (command === 'startup') {
