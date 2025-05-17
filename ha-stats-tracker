@@ -13,6 +13,7 @@ function log(message, isDebug = false) {
     if (isDebug && !global.DEBUG) {
         return;
     }
+
     const LOG_PREFIX = `[${APP_NAME}]`;
     const logPriority = isDebug ? 'debug' : 'info';
 
@@ -23,6 +24,11 @@ function log(message, isDebug = false) {
             console[logPriority](`${LOG_PREFIX} ${message}`);
         }
     });
+
+    // If debug mode, output to console
+    if (isDebug) {
+        console.debug(`${LOG_PREFIX} ${message}`);
+    }
 }
 
 // Get device information
@@ -283,9 +289,66 @@ async function main() {
         await removeAllEntities(config);
         return process.exit(0);
     }
-    else if (command ==='version') {
+    else if (command === 'version') {
         log(`HA Stats Tracker v${VERSION}`);
         return process.exit(0);
+    }
+    else if (command === 'startup') {
+        log(`Installing startup service...`, true);
+
+        // Create init.d script content
+        const initScript = `#!/bin/sh /etc/rc.common
+
+        START=90
+        STOP=1
+        PROG=${path.join(__dirname, 'ha-stats-tracker')}
+
+        start_service() {
+            procd_open_instance
+            procd_set_param command "$PROG"
+            procd_set_param stdout 1
+            procd_set_param stderr 1
+            procd_set_param respawn
+            procd_set_param term_timeout 300
+            procd_close_instance
+        }
+        `;
+
+        try {
+            // Write the init.d script
+            fs.writeFileSync('/etc/init.d/ha-stats-tracker', initScript, {
+                mode: 0o755
+            });
+            log('Init.d script created successfully', true);
+
+            // Enable the service
+            exec('/etc/init.d/ha-stats-tracker enable', (error) => {
+                if (error) {
+                    log(`Failed to enable service: ${error.message}`, true);
+                    process.exit(1);
+                }
+
+                log('Service enabled successfully, will start on next boot', true);
+                process.exit(0);
+            });
+        } catch (error) {
+            log(`Failed to create init.d script: ${error.message}`, true);
+            process.exit(1);
+        }
+
+        // Restart the service
+        log('Restarting service...', true);
+        exec('/etc/init.d/ha-stats-tracker restart', (error) => {
+            if (error) {
+                log(`Failed to restart service: ${error.message}`, true);
+                process.exit(1);
+            }
+
+            log('Service restarted successfully', true);
+            process.exit(0);
+        });
+
+        return;
     }
 
     // Check unknown commands
