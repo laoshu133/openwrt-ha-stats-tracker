@@ -17,31 +17,28 @@ A Node.js-based system monitoring tool that collects OpenWrt system statistics a
 
 ## Installation
 
-1. Clone the repository to your OpenWrt device:
+1. Create installation directory and download files:
 ```bash
-git clone https://github.com/laoshu133/openwrt-ha-stats-tracker.git
+mkdir -p /etc/config/openwrt-ha-stats-tracker
+cd /etc/config/openwrt-ha-stats-tracker
+curl -O https://raw.githubusercontent.com/laoshu133/openwrt-ha-stats-tracker/main/ha-stats-tracker
+curl -O https://raw.githubusercontent.com/laoshu133/openwrt-ha-stats-tracker/main/settings.json.example
 ```
 
-2. Copy the example configuration:
+2. Add execution permissions:
+```bash
+chmod +x ha-stats-tracker
+```
+
+3. Configure settings:
 ```bash
 cp settings.json.example settings.json
+vi settings.json  # or use your preferred editor
 ```
 
-3. Configure your settings:
-   To get a Long-Lived Access Token:
-    - In Home Assistant, click on your user profile icon (usually in the bottom left corner).
-    - Scroll down to the "Long-Lived Access Tokens" section.
-    - Click "CREATE TOKEN".
-    - Give it a name (e.g., `OpenWrt Stats Tracker`).
-    - Copy the generated token. **Important: This token will only be shown once. Store it securely.**
-
-```json
-{
-  "hass_url": "http://homeassistant.local:8123",
-  "hass_token": "<Your_Long_Lived_Access_Token>",
-  "update_interval": 60,
-  "debug": false
-}
+4. Set up autostart service:
+```bash
+./ha-stats-tracker startup
 ```
 
 ## Configuration Options

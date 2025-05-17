@@ -31,6 +31,27 @@ function log(message, isDebug = false) {
     }
 }
 
+function getConfig(cfgPath = path.join(__dirname, 'settings.json')) {
+    const config = {
+        hass_url: 'http://homeassistant.local:8123',
+        hass_token: '',
+        update_interval: 60,
+        debug: true
+    };
+
+    try {
+        const configContent = fs.promises.readFileSync(cfgPath, 'utf8');
+        const existingConfig = JSON.parse(configContent);
+
+        Object.assign(config, existingConfig);
+    }
+    catch (error) {
+        log(`No existing configuration found, will create a new one.`, true);
+    }
+
+    return config;
+}
+
 // Get device information
 function getDeviceInfo() {
     let name = 'openwrt_unknown_device';
@@ -252,62 +273,110 @@ async function removeAllEntities(config) {
     return success;
 }
 
-// Main function
-async function main() {
-    // Check for command line arguments
-    const args = process.argv.slice(2);
-    const command = String(args[0] || '').trim();
-
-    // Read configuration file
-    const CONFIG_FILE = path.join(__dirname, 'settings.json');
-
-    let config;
-    try {
-        const configContent = await fs.promises.readFile(CONFIG_FILE, 'utf8');
-        config = JSON.parse(configContent);
-        config = {
-            hass_url: config.hass_url || 'http://homeassistant.local:8123',
-            hass_token: config.hass_token || '',
-            update_interval: config.update_interval || 60,
-            debug: config.debug || false
-        };
-    } catch (error) {
-        log(`Configuration file not found: ${CONFIG_FILE}`);
-        process.exit(1);
+// All commands
+const COMMANDS = {
+  version: {
+    description: 'Display version information',
+    execute: async () => {
+      console.log(`HA Stats Tracker: v${VERSION}`);
     }
+  },
+  help: {
+    description: 'Display this help information',
+    execute: async () => {
+        console.log(`
+HA Stats Tracker v${VERSION}
 
-    if (!config.hass_token) {
-        log('Home Assistant token not configured');
-        process.exit(1);
+Usage: ha-stats-tracker [command]
+
+Available commands:
+    help                 Display this help information
+    setup                Interactive setup wizard to configure settings
+    version              Display version information
+    startup              Install and configure boot service
+    upgrade              Upgrade to the latest version from GitHub
+    remove_all_entities  Remove all entities created in Home Assistant
+
+When run without arguments, the program starts in normal mode,
+collecting system statistics and sending them to Home Assistant.
+        `);
     }
+  },
+  setup: {
+    description: 'Interactive setup wizard to configure settings',
+    execute: async () => {
+        const readline = require('readline');
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
 
-    global.DEBUG = config.debug;
+        console.log('\nHA Stats Tracker Setup\n');
+        console.log('This wizard will help you configure the basic settings.\n');
 
-    // Handle commands
-    if (command === 'remove_all_entities') {
-        log(`Starting Remove All Entities...`);
-        await removeAllEntities(config);
-        return process.exit(0);
+        const currentConfig = getConfig();
+
+        // 提示用户输入 Home Assistant URL
+        rl.question(`Home Assistant URL [${currentConfig.hass_url}]: `, (answer) => {
+            const hass_url = answer.trim() || currentConfig.hass_url;
+
+            // 提示用户输入 Home Assistant Token
+            rl.question('Home Assistant Long-Lived Access Token: ', (answer) => {
+                const hass_token = answer.trim() || currentConfig.hass_token;
+
+                if (!hass_token) {
+                    console.log('Error: Home Assistant token is required.');
+                    rl.close();
+                    return process.exit(1);
+                }
+
+                // 保存配置
+                const newConfig = {
+                    hass_url,
+                    hass_token,
+                    update_interval: currentConfig.update_interval,
+                    debug: currentConfig.debug
+                };
+
+                try {
+                    fs.writeFileSync(CONFIG_FILE, JSON.stringify(newConfig, null, 2));
+                    console.log(`\nConfiguration saved to ${CONFIG_FILE}`);
+                    console.log('\nYou can now run the tracker with:');
+                    console.log('  ./ha-stats-tracker');
+                    console.log('\nOr set it up to start on boot with:');
+                    console.log('  ./ha-stats-tracker startup');
+                } catch (error) {
+                    console.log(`Error saving configuration: ${error.message}`);
+                    process.exit(1);
+                }
+
+                rl.close();
+                process.exit(0);
+            });
+        });
     }
-    else if (command === 'startup') {
+  },
+  startup: {
+    description: 'Install and configure boot service',
+    execute: async () => {
         log(`Installing startup service...`, true);
 
         // Create init.d script content
         const initScript = `#!/bin/sh /etc/rc.common
 
-        START=90
-        STOP=1
-        PROG=${path.join(__dirname, 'ha-stats-tracker')}
+START=90
+STOP=1
+PROG=${path.join(__dirname, 'ha-stats-tracker')}
 
-        start_service() {
-            procd_open_instance
-            procd_set_param command "$PROG"
-            procd_set_param stdout 1
-            procd_set_param stderr 1
-            procd_set_param respawn
-            procd_set_param term_timeout 300
-            procd_close_instance
-        }
+start_service() {
+    procd_open_instance
+    procd_set_param command "$PROG"
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_set_param respawn
+    procd_set_param term_timeout 300
+    procd_close_instance
+}
         `;
 
         try {
@@ -343,77 +412,86 @@ async function main() {
             log('Service restarted successfully', true);
             process.exit(0);
         });
-
-        return;
     }
-    else if (command === 'version') {
-        console.log(`HA Stats Tracker: v${VERSION}`);
-        return process.exit(0);
-    }
-    // For help
-    else if (command !== '') {
-        console.log(`
-HA Stats Tracker v${VERSION}
+  },
+  startTracker: {
+    description: 'Start the tracker in normal mode',
+    execute: async () => {
+        log(`Starting HA Stats Tracker v${VERSION}`);
 
-Usage: ha-stats-tracker [command]
+        const deviceInfo = getDeviceInfo();
 
-Available commands:
-  help                 Display this help information
-  version              Display version information
-  startup              Install and configure boot service
-  remove_all_entities  Remove all entities created in Home Assistant
+        // Update version entity
+        await updateVersionEntity(deviceInfo, config);
 
-When run without arguments, the program starts in normal mode,
-collecting system statistics and sending them to Home Assistant.
-        `);
-        return process.exit(0);
-    }
+        let lastUpdate = 0;
+        let haIsOffline = false;
 
-    // Normal operation mode
-    log(`Starting HA Stats Tracker v${VERSION}`);
+        // Handle process termination signals
+        process.on('SIGTERM', () => {
+            log('Stopping...');
+            process.exit(0);
+        });
+        process.on('SIGINT', () => {
+            log('Stopping...');
+            process.exit(0);
+        });
 
-    const deviceInfo = getDeviceInfo();
+        // Main loop
+        while (true) {
+            const currentTime = Math.floor(Date.now() / 1000);
 
-    // Update version entity
-    await updateVersionEntity(deviceInfo, config);
+            if (currentTime - lastUpdate >= config.update_interval) {
+                const stats = await getSystemStats();
 
-    let lastUpdate = 0;
-    let haIsOffline = false;
-
-    // Handle process termination signals
-    process.on('SIGTERM', () => {
-        log('Stopping...');
-        process.exit(0);
-    });
-    process.on('SIGINT', () => {
-        log('Stopping...');
-        process.exit(0);
-    });
-
-    // Main loop
-    while (true) {
-        const currentTime = Math.floor(Date.now() / 1000);
-
-        if (currentTime - lastUpdate >= config.update_interval) {
-            const stats = await getSystemStats();
-
-            if (await sendSystemStats(deviceInfo, stats, config)) {
-                if (haIsOffline) {
-                    log('Home Assistant is back online');
-                    await updateVersionEntity(deviceInfo.id, config);
-                    haIsOffline = false;
+                if (await sendSystemStats(deviceInfo, stats, config)) {
+                    if (haIsOffline) {
+                        log('Home Assistant is back online');
+                        await updateVersionEntity(deviceInfo.id, config);
+                        haIsOffline = false;
+                    }
                 }
-            } else {
-                log('Home Assistant seems to be offline, will retry...');
-                haIsOffline = true;
-                await new Promise(resolve => setTimeout(resolve, 5000));
-                continue;
+                else {
+                    log('Home Assistant seems to be offline, will retry...');
+                    haIsOffline = true;
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    continue;
+                }
+
+                lastUpdate = currentTime;
             }
 
-            lastUpdate = currentTime;
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
+    }
+  }
+}
 
-        await new Promise(resolve => setTimeout(resolve, 1000));
+// Main function
+async function main() {
+    // Check for command line arguments
+    const args = process.argv.slice(2);
+    const command = String(args[0] || '').trim();
+
+    // Load configuration
+    const config = getConfig();
+
+    global.DEBUG = config.debug;
+
+    // Check if command exists
+    if (command && !COMMANDS[command]) {
+        // Show help if command doesn't exist
+        COMMANDS.help.execute();
+        process.exit(1);
+    }
+
+    // Execute command
+    if (command) {
+        await COMMANDS[command].execute();
+    }
+    else {
+        // Start the tracker in normal mode
+        await COMMANDS.startTracker.execute();
     }
 }
 
