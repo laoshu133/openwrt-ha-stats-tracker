@@ -289,27 +289,6 @@ async function main() {
         await removeAllEntities(config);
         return process.exit(0);
     }
-    else if (command === 'version') {
-        console.log(`HA Stats Tracker: v${VERSION}`);
-        return process.exit(0);
-    }
-    else if (command === 'help') {
-        console.log(`
-HA Stats Tracker v${VERSION}
-
-Usage: ha-stats-tracker [command]
-
-Available commands:
-  help                 Display this help information
-  version              Display version information
-  startup              Install and configure boot service
-  remove_all_entities  Remove all entities created in Home Assistant
-
-When run without arguments, the program starts in normal mode,
-collecting system statistics and sending them to Home Assistant.
-        `);
-        return process.exit(0);
-    }
     else if (command === 'startup') {
         log(`Installing startup service...`, true);
 
@@ -367,11 +346,27 @@ collecting system statistics and sending them to Home Assistant.
 
         return;
     }
+    else if (command === 'version') {
+        console.log(`HA Stats Tracker: v${VERSION}`);
+        return process.exit(0);
+    }
+    // For help
+    else if (command !== '') {
+        console.log(`
+HA Stats Tracker v${VERSION}
 
-    // Check unknown commands
-    if (command !=='') {
-        log(`Unknown command: ${command}`);
-        return process.exit(1);
+Usage: ha-stats-tracker [command]
+
+Available commands:
+  help                 Display this help information
+  version              Display version information
+  startup              Install and configure boot service
+  remove_all_entities  Remove all entities created in Home Assistant
+
+When run without arguments, the program starts in normal mode,
+collecting system statistics and sending them to Home Assistant.
+        `);
+        return process.exit(0);
     }
 
     // Normal operation mode
