@@ -5,6 +5,7 @@ const path = require('path');
 const { exec } = require('child_process');
 
 // Application configuration
+const CONFIG_FILE = path.join(__dirname, 'settings.json');
 const APP_NAME = "HA Stats Tracker";
 const VERSION = "1.1.0";
 
@@ -31,17 +32,19 @@ function log(message, isDebug = false) {
     }
 }
 
-function getConfig(cfgPath = path.join(__dirname, 'settings.json')) {
+function getConfig(cfgPath = CONFIG_FILE) {
     const config = {
         hass_url: 'http://homeassistant.local:8123',
         hass_token: '',
         update_interval: 60,
-        debug: true
+        debug: false
     };
 
     try {
-        const configContent = fs.promises.readFileSync(cfgPath, 'utf8');
+        const configContent = fs.readFileSync(cfgPath, 'utf8');
         const existingConfig = JSON.parse(configContent);
+
+        console.log(222, existingConfig);
 
         Object.assign(config, existingConfig);
     }
@@ -241,7 +244,7 @@ async function removeEntity(entityId, config) {
         log(`Successfully removed entity: ${entityId}`, true);
         return true;
     } catch (error) {
-        log(`Failed to remove entity ${entityId}: ${error.message}`);
+        log(`Failed to remove entity ${entityId}: ${error.message}`, true);
         return false;
     }
 }
@@ -271,6 +274,15 @@ async function removeAllEntities(config) {
     }
 
     return success;
+}
+
+// 添加一个 promisify 函数用于 readline 操作
+function promptQuestion(rl, question, defaultValue = '') {
+  return new Promise((resolve) => {
+    rl.question(`${question}${defaultValue ? ` [${defaultValue}]` : ''}: `, (answer) => {
+      resolve(answer.trim() || defaultValue);
+    });
+  });
 }
 
 // All commands
@@ -304,7 +316,7 @@ collecting system statistics and sending them to Home Assistant.
   },
   setup: {
     description: 'Interactive setup wizard to configure settings',
-    execute: async () => {
+    execute: async (config) => {
         const readline = require('readline');
         const rl = readline.createInterface({
             input: process.stdin,
@@ -314,46 +326,38 @@ collecting system statistics and sending them to Home Assistant.
         console.log('\nHA Stats Tracker Setup\n');
         console.log('This wizard will help you configure the basic settings.\n');
 
-        const currentConfig = getConfig();
+        try {
+            // 使用 promisify 函数简化代码
+            const hass_url = await promptQuestion(rl, 'Home Assistant URL', config.hass_url);
+            const hass_token = await promptQuestion(rl, 'Home Assistant Long-Lived Access Token');
 
-        // 提示用户输入 Home Assistant URL
-        rl.question(`Home Assistant URL [${currentConfig.hass_url}]: `, (answer) => {
-            const hass_url = answer.trim() || currentConfig.hass_url;
+            if (!hass_token) {
+                console.log('Error: Home Assistant token is required.');
+                process.exit(1);
+            }
 
-            // 提示用户输入 Home Assistant Token
-            rl.question('Home Assistant Long-Lived Access Token: ', (answer) => {
-                const hass_token = answer.trim() || currentConfig.hass_token;
+            // 保存配置
+            const newConfig = {
+                hass_url,
+                hass_token,
+                update_interval: config.update_interval,
+                debug: config.debug
+            };
 
-                if (!hass_token) {
-                    console.log('Error: Home Assistant token is required.');
-                    rl.close();
-                    return process.exit(1);
-                }
-
-                // 保存配置
-                const newConfig = {
-                    hass_url,
-                    hass_token,
-                    update_interval: currentConfig.update_interval,
-                    debug: currentConfig.debug
-                };
-
-                try {
-                    fs.writeFileSync(CONFIG_FILE, JSON.stringify(newConfig, null, 2));
-                    console.log(`\nConfiguration saved to ${CONFIG_FILE}`);
-                    console.log('\nYou can now run the tracker with:');
-                    console.log('  ./ha-stats-tracker');
-                    console.log('\nOr set it up to start on boot with:');
-                    console.log('  ./ha-stats-tracker startup');
-                } catch (error) {
-                    console.log(`Error saving configuration: ${error.message}`);
-                    process.exit(1);
-                }
-
-                rl.close();
-                process.exit(0);
-            });
-        });
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(newConfig, null, 2));
+            console.log(`\nConfiguration saved to ${CONFIG_FILE}`);
+            console.log('\nYou can now run the tracker with:');
+            console.log('  ./ha-stats-tracker');
+            console.log('\nOr set it up to start on boot with:');
+            console.log('  ./ha-stats-tracker startup');
+        }
+        catch (error) {
+            console.log(`Error during setup: ${error.message}`);
+            process.exit(1);
+        }
+        finally {
+            rl.close();
+        }
     }
   },
   startup: {
@@ -414,9 +418,15 @@ start_service() {
         });
     }
   },
+  remove_all_entities: {
+    description: 'Remove all entities created in Home Assistant',
+    execute: async (config) => {
+        await removeAllEntities(config);
+    }
+  },
   startTracker: {
     description: 'Start the tracker in normal mode',
-    execute: async () => {
+    execute: async (config) => {
         log(`Starting HA Stats Tracker v${VERSION}`);
 
         const deviceInfo = getDeviceInfo();
@@ -487,11 +497,11 @@ async function main() {
 
     // Execute command
     if (command) {
-        await COMMANDS[command].execute();
+        await COMMANDS[command].execute(config);
     }
     else {
         // Start the tracker in normal mode
-        await COMMANDS.startTracker.execute();
+        await COMMANDS.startTracker.execute(config);
     }
 }
 
