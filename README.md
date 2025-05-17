@@ -30,10 +30,9 @@ curl -O https://raw.githubusercontent.com/laoshu133/openwrt-ha-stats-tracker/mai
 chmod +x ha-stats-tracker
 ```
 
-3. Configure settings:
+3. Configure settings using the setup wizard:
 ```bash
-cp settings.json.example settings.json
-vi settings.json  # or use your preferred editor
+./ha-stats-tracker setup
 ```
 
 4. Set up autostart service:
@@ -82,6 +81,11 @@ logread | grep "HA Stats Tracker"
     - Paste the log output in a code block
 
 ## Changelog
+
+### v1.2.0
+- Added `setup` command for interactive configuration
+- Added `help` command to display available commands
+- Improved error handling and user experience
 
 ### v1.1.0
 - Added `startup` command to automatically install and configure the service for boot

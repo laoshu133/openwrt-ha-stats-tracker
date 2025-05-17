@@ -306,7 +306,6 @@ Available commands:
     setup                Interactive setup wizard to configure settings
     version              Display version information
     startup              Install and configure boot service
-    upgrade              Upgrade to the latest version from GitHub
     remove_all_entities  Remove all entities created in Home Assistant
 
 When run without arguments, the program starts in normal mode,
