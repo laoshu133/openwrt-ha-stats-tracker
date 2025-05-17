@@ -85,7 +85,13 @@ logread | grep "HA Stats Tracker"
     - Paste the log output in a code block
 
 ## Changelog
-- 1.0.0: Initial release with core features including CPU temperature, system load, and CPU usage monitoring
+
+### v1.1.0
+- Added `startup` command to automatically install and configure the service for boot
+- Added `remove_all_entities` command to remove all entities from Home Assistant
+
+### v1.0.0
+- Initial release with core features including CPU temperature, system load, and CPU usage monitoring
 
 ## License
 
