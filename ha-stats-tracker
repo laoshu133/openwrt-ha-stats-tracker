@@ -11,25 +11,16 @@ const CONFIG_FILE = path.join(__dirname, 'settings.json');
 
 // Log function
 function log(message, isDebug = false) {
-    if (isDebug && !global.DEBUG) {
-        return;
-    }
-
     const LOG_PREFIX = `[${APP_NAME}]`;
     const logPriority = isDebug ? 'debug' : 'info';
 
     // Use logger command to write to system log
     exec(`logger -t "${LOG_PREFIX}" -p daemon.${logPriority} "${message}"`, (error) => {
-        if (error) {
-            // If writing to system log fails, fallback to console output
+        // Check if there's an error writing to syslog or if running in TTY mode
+        if (error || process.stdout.isTTY) {
             console[logPriority](`${LOG_PREFIX} ${message}`);
         }
     });
-
-    // If debug mode, output to console
-    if (isDebug) {
-        console.debug(`${LOG_PREFIX} ${message}`);
-    }
 }
 
 function getConfig(cfgPath = CONFIG_FILE) {
@@ -47,7 +38,7 @@ function getConfig(cfgPath = CONFIG_FILE) {
         Object.assign(config, existingConfig);
     }
     catch (error) {
-        log(`No existing configuration found, will create a new one.`, true);
+        log(`No existing configuration found, will create a new one.`);
     }
 
     return config;
@@ -167,7 +158,7 @@ async function updateVersionEntity(deviceInfo, config) {
 
     try {
         await sendToHA(entityId, data, config);
-        log('Version entity updated successfully', true);
+        log('Version entity updated successfully');
         return true;
     } catch (error) {
         log('Failed to update version entity');
@@ -207,7 +198,7 @@ async function sendSystemStats(deviceInfo, stats, config) {
         };
 
         try {
-            log(`Updating data for ${entityId}`, true);
+            log(`Updating data for ${entityId}`);
             await sendToHA(entityId, data, config);
         } catch (error) {
             hasError = true;
@@ -239,10 +230,10 @@ async function removeEntity(entityId, config) {
             throw new Error(`HTTP Error: ${checkResponse.status}`);
         }
 
-        log(`Successfully removed entity: ${entityId}`, true);
+        log(`Successfully removed entity: ${entityId}`);
         return true;
     } catch (error) {
-        log(`Failed to remove entity ${entityId}: ${error.message}`, true);
+        log(`Failed to remove entity ${entityId}: ${error.message}`);
         return false;
     }
 }
@@ -360,7 +351,7 @@ collecting system statistics and sending them to Home Assistant.
   startup: {
     description: 'Install and configure boot service',
     execute: async () => {
-        log(`Installing startup service...`, true);
+        log(`Installing startup service...`);
 
         // Create init.d script content
         const initScript = `#!/bin/sh /etc/rc.common
@@ -385,32 +376,32 @@ start_service() {
             fs.writeFileSync('/etc/init.d/ha-stats-tracker', initScript, {
                 mode: 0o755
             });
-            log('Init.d script created successfully', true);
+            log('Init.d script created successfully');
 
             // Enable the service
             exec('/etc/init.d/ha-stats-tracker enable', (error) => {
                 if (error) {
-                    log(`Failed to enable service: ${error.message}`, true);
+                    log(`Failed to enable service: ${error.message}`);
                     process.exit(1);
                 }
 
-                log('Service enabled successfully, will start on next boot', true);
+                log('Service enabled successfully, will start on next boot');
                 process.exit(0);
             });
         } catch (error) {
-            log(`Failed to create init.d script: ${error.message}`, true);
+            log(`Failed to create init.d script: ${error.message}`);
             process.exit(1);
         }
 
         // Restart the service
-        log('Restarting service...', true);
+        log('Restarting service...');
         exec('/etc/init.d/ha-stats-tracker restart', (error) => {
             if (error) {
-                log(`Failed to restart service: ${error.message}`, true);
+                log(`Failed to restart service: ${error.message}`);
                 process.exit(1);
             }
 
-            log('Service restarted successfully', true);
+            log('Service restarted successfully');
             process.exit(0);
         });
     }
@@ -492,8 +483,6 @@ async function main() {
 
     // Load configuration
     const config = getConfig();
-
-    global.DEBUG = config.debug;
 
     // Check if command exists
     if (command && !COMMANDS[command]) {
