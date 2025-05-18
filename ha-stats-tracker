@@ -423,6 +423,43 @@ start_service() {
   },
   startTracker: {
     description: 'Start the tracker in normal mode',
+    sendStatsToHA: async (config, deviceInfo) => {
+        const stats = await getSystemStats();
+        const sentStatus = await sendSystemStats(deviceInfo, stats, config)
+
+        return sentStatus;
+    },
+    updateStatus: {
+        errorCount: 0,
+        lastUpdate: 0
+    },
+    autoCheck: async (config, deviceInfo) => {
+        const updateStatus = this.updateStatus;
+        const now = Math.floor(Date.now() / 1000);
+
+        if (now - updateStatus.lastUpdate >= config.update_interval) {
+            try {
+                await this.sendStatsToHA(config, deviceInfo);
+
+                // Update last update time
+                updateStatus.lastUpdate = now;
+
+                // Reset error count
+                updateStatus.errorCount = 0;
+            }
+            catch (error) {
+                log(`Update Home Assistant stats error: ${error.message}`);
+                updateStatus.errorCount++;
+            }
+        }
+
+        // If there are errors, increase the delay
+        delay = config.update_interval * Math.max(1, updateStatus.errorCount);
+        await new Promise(resolve => setTimeout(resolve, delay * 1000));
+
+        // Next auto check
+        this.autoCheck(config, deviceInfo);
+    },
     execute: async (config) => {
         log(`Starting HA Stats Tracker v${VERSION}`);
 
@@ -430,9 +467,6 @@ start_service() {
 
         // Update version entity
         await updateVersionEntity(deviceInfo, config);
-
-        let lastUpdate = 0;
-        let haIsOffline = false;
 
         // Handle process termination signals
         process.on('SIGTERM', () => {
@@ -444,32 +478,8 @@ start_service() {
             process.exit(0);
         });
 
-        // Main loop
-        while (true) {
-            const currentTime = Math.floor(Date.now() / 1000);
-
-            if (currentTime - lastUpdate >= config.update_interval) {
-                const stats = await getSystemStats();
-
-                if (await sendSystemStats(deviceInfo, stats, config)) {
-                    if (haIsOffline) {
-                        log('Home Assistant is back online');
-                        await updateVersionEntity(deviceInfo.id, config);
-                        haIsOffline = false;
-                    }
-                }
-                else {
-                    log('Home Assistant seems to be offline, will retry...');
-                    haIsOffline = true;
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    continue;
-                }
-
-                lastUpdate = currentTime;
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+        // Start auto check
+        this.autoCheck(config, deviceInfo);
     }
   }
 }
