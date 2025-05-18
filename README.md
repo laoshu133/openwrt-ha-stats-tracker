@@ -20,7 +20,7 @@ A Node.js-based system monitoring tool that collects OpenWrt system statistics a
 1. Create installation directory and download files:
 ```bash
 mkdir -p /etc/config/openwrt-ha-stats-tracker && cd $_
-curl -O https://github.com/laoshu133/openwrt-ha-stats-tracker/raw/refs/heads/master/ha-stats-tracker
+curl -O https://raw.githubusercontent.com/laoshu133/openwrt-ha-stats-tracker/master/ha-stats-tracker
 chmod +x ha-stats-tracker
 ```
 

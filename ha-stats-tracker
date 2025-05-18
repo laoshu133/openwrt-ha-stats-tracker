@@ -5,7 +5,7 @@ const path = require('path');
 const { exec } = require('child_process');
 
 // Base configuration
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 const APP_NAME = "HA Stats Tracker";
 const CONFIG_FILE = path.join(__dirname, 'settings.json');
 
