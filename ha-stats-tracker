@@ -278,13 +278,13 @@ function promptQuestion(rl, question, defaultValue = '') {
 const COMMANDS = {
   version: {
     description: 'Display version information',
-    execute: async () => {
+    async execute() {
       console.log(`HA Stats Tracker: v${VERSION}`);
     }
   },
   help: {
     description: 'Display this help information',
-    execute: async () => {
+    async execute() {
         console.log(`
 HA Stats Tracker v${VERSION}
 
@@ -304,7 +304,7 @@ collecting system statistics and sending them to Home Assistant.
   },
   setup: {
     description: 'Interactive setup wizard to configure settings',
-    execute: async (config) => {
+    async execute(config) {
         const readline = require('readline');
         const rl = readline.createInterface({
             input: process.stdin,
@@ -358,6 +358,8 @@ collecting system statistics and sending them to Home Assistant.
 
 START=90
 STOP=1
+USE_PROCD=1
+NAME=ha-stats-tracker
 PROG=${path.join(__dirname, 'ha-stats-tracker')}
 
 start_service() {
@@ -408,7 +410,7 @@ start_service() {
   },
   remove_all_entities: {
     description: 'Remove all entities created in Home Assistant',
-    execute: async (config) => {
+    async execute(config) {
         await removeAllEntities(config);
     }
   },
@@ -424,7 +426,7 @@ start_service() {
         errorCount: 0,
         lastUpdate: 0
     },
-    autoCheck: async (config, deviceInfo) => {
+    async autoCheck(config, deviceInfo) {
         const updateStatus = this.updateStatus;
         const now = Math.floor(Date.now() / 1000);
 
@@ -451,7 +453,7 @@ start_service() {
         // Next auto check
         this.autoCheck(config, deviceInfo);
     },
-    execute: async (config) => {
+    async execute(config) {
         log(`Starting HA Stats Tracker v${VERSION}`);
 
         const deviceInfo = getDeviceInfo();
