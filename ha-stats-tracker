@@ -97,6 +97,31 @@ async function getSystemStats() {
         // Skip when CPU usage reading fails
     }
 
+    // Get fan speed
+    try {
+        const fanPaths = [
+            '/sys/class/thermal/cooling_device*/cur_state',
+            '/sys/class/hwmon/hwmon*/fan*_input',
+            '/sys/devices/platform/*/fan*_input'
+        ];
+
+        for (const pattern of fanPaths) {
+            const fanFiles = await new Promise((resolve) => {
+                exec(`ls ${pattern} 2>/dev/null || echo ''`, (error, stdout) => {
+                    resolve(stdout.trim().split('\n').filter(Boolean));
+                });
+            });
+
+            if (fanFiles.length > 0) {
+                const fanSpeed = await fs.promises.readFile(fanFiles[0], 'utf8');
+                stats.fan_speed = parseInt(fanSpeed.trim());
+                break;
+            }
+        }
+    } catch (error) {
+        // Skip when fan speed reading fails
+    }
+
     return stats;
 }
 
@@ -104,7 +129,8 @@ async function getSystemStats() {
 function getUnitForStat(statName) {
     const units = {
         temperature: '°C',
-        cpu_usage: '%'
+        cpu_usage: '%',
+        fan_speed: 'RPM'
     };
     return units[statName] || '';
 }
@@ -116,7 +142,8 @@ function getIconForStat(statName) {
         load_1min: 'mdi:chart-line',
         load_5min: 'mdi:chart-line',
         load_15min: 'mdi:chart-line',
-        cpu_usage: 'mdi:cpu-64-bit'
+        cpu_usage: 'mdi:cpu-64-bit',
+        fan_speed: 'mdi:fan'
     };
     return icons[statName] || 'mdi:eye';
 }
@@ -179,7 +206,8 @@ async function sendSystemStats(deviceInfo, stats, config) {
             load_1min: '1 Minute Load',
             load_5min: '5 Minutes Load',
             load_15min: '15 Minutes Load',
-            cpu_usage: 'CPU Usage'
+            cpu_usage: 'CPU Usage',
+            fan_speed: 'Fan Speed'
         };
 
         const uniqueId = `${deviceInfo.id}_${statName}`;
